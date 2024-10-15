@@ -45,8 +45,9 @@ thesis_src/
     |                  #                                                  └──> voronoi_seed_ridge_circle
     |                  #                                                  └──> voronoi_seed_ridge_ellipse
     |                  #                     └──> verify_annotation.py # To do a visual inspection by overlaying extracted mask and original crop
-
- 
+    |                  #  
+    ├── utils/ # training notebook for stardist and evaluation notebook for cellpose 
+    |                  
 ```
 
 ## Follow the steps below to set up the necessary environments and check GPU configurations:
