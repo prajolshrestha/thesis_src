@@ -97,4 +97,4 @@ $ python -c 'import torch; print(torch.rand(2,3).cuda())'
 ```
 
 
-Note: You may have to update the file path as required!
+Note: You may need to update the file path as required!
