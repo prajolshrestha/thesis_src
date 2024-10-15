@@ -34,6 +34,7 @@ thesis_src/
     |                  #                     └──> # Using both center and boundary information from Confocal AOSLO data
     |                  #                                └──> Closest vertex: annotation_seed_circle
     |                  #                                └──> Closest ridge midpoint vertex: annotation_seed_ridge_circle
+    |                  #                                └──> Closest ridge midpoint vertex: annotation_seed_ridge_ellipse (Note: Not used in this work: Incorrect annotation))
     |                  #                     └──> # Using cone information from Confocal AOSLO data
     |                  #                                └──> Voronoi method: # Note: We do not use this technique in our work as it is not accurate!
     |                  #                                        └──> # We use center info. but later we extract the center and boundary from the Voronoi regions            
