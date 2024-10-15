@@ -1,0 +1,206 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from PIL import Image
+from matplotlib.pyplot import figure
+import cv2 as cv
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
+import glob
+import ast
+import warnings
+warnings.filterwarnings('ignore')
+from PIL import Image, ImageDraw
+import os
+from os import listdir
+from os.path import isfile
+from os.path import join
+from pathlib import Path
+import argparse
+from scipy.spatial import Voronoi
+from shapely import Polygon 
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--aoslo_folder', type=str, default='/home/codebind/thesis-data-preprocessing/data', help='path to AOSLO images')
+parser.add_argument('--image_name', type=str, default='2538_right_retina_Confocal_RPE_2023-09-10', help='AOSLO image name')
+parser.add_argument('--output_folder', type=str, default='./AOSLO_dataset_using_voronoi_ellipse', help='path to output folder')
+
+
+def crop_coord(x_center_coords, y_center_coords, delta):
+    crop_x = []
+    crop_y = []   
+    x_max = max(x_center_coords)
+    y_max = max(y_center_coords)   
+    x_min = min(x_center_coords)
+    y_min = min(y_center_coords)   
+    xt = int((x_max - x_min) / delta)
+    yt = int((y_max - y_min) / delta)
+    crop_x.append(x_min)
+    crop_y.append(y_min)
+    
+    #1. 
+    if xt <= 1:
+        crop_x.append(x_max)
+    else:
+        for i in range(1, xt + 1):
+            crop_x.append(x_min + i * delta) 
+    
+    #2.
+    if yt <= 1:
+        crop_y.append(y_max)
+    else:
+        for i in range(1, yt + 1):
+            crop_y.append(y_min + i * delta)
+    return crop_x, crop_y
+    
+    
+def main():
+    args = parser.parse_args()
+    aoslo_folder_path = Path(args.aoslo_folder)
+    aoslo_name = Path(args.image_name)
+    output_folder = Path(args.output_folder)
+
+    # Create new folders
+    Path(os.path.join(output_folder, aoslo_name, 'crop')).mkdir(parents=True, exist_ok=True)
+    Path(os.path.join(output_folder, aoslo_name, 'mask')).mkdir(parents=True, exist_ok=True)
+    Path(os.path.join(output_folder, aoslo_name, 'seg')).mkdir(parents=True, exist_ok=True)
+    Path(os.path.join(output_folder, aoslo_name, 'crop_masked')).mkdir(parents=True, exist_ok=True)
+    
+    # Read csv file for the specific patient
+    cone_csv = pd.read_csv(os.path.join(aoslo_folder_path, aoslo_name, 'cone_coords.csv'), skipinitialspace = True)
+    image_ids = cone_csv['image_id'].unique() #different image_id of same Specific patient  
+    
+    for image_id in tqdm(image_ids):
+        cell_data = cone_csv[(cone_csv['image_id'] == image_id)].reset_index(drop=True)
+        filename = str(cell_data['filename'].to_numpy()[0] + 'f')
+        filename = filename.replace('confocal', 'calculated') # changed
+        sample_image = cv.imread(os.path.join(aoslo_folder_path, aoslo_name, 'AOSLO', filename), cv.IMREAD_GRAYSCALE)
+        sample_pixels = np.array(sample_image)
+        samp_h = sample_pixels.shape[0]
+        samp_w = sample_pixels.shape[1]
+        
+        #1. cone center coordinates are populated
+        cone_center_coords = []
+        for cell in range(0, cell_data.shape[0]):
+            cone_center_coords.append([cell_data['cone_x_local_pix'][cell], cell_data['cone_y_local_pix'][cell]])
+        
+        #2. Center and Circumference points are computed from each voronoi region
+        vor = Voronoi(cone_center_coords)
+        poly_coords = []
+        centers = []
+        closest_points = []
+        farthest_points=[]
+        for region_index in vor.regions:
+            if not -1 in region_index and len(region_index) > 0:
+                temp = [list(map(int, vor.vertices[i])) for i in region_index]
+                
+                # Compute center
+                poly = Polygon(temp)
+                centroid = poly.centroid
+                center = np.array([centroid.x, centroid.y])
+
+                # Compute distance to ridge points
+                ridge_points = []
+                for simplex in vor.ridge_vertices:
+                    if simplex[0] in region_index and simplex[1] in region_index: # Look current voronoi region!
+                        if simplex[0] >= 0 and simplex[1] >= 0:  # Avoid infinite vertices
+                            ridge_point = (vor.vertices[simplex[0]] + vor.vertices[simplex[1]]) / 2
+                            ridge_points.append(ridge_point)
+                    
+                ridge_points = np.array(ridge_points)
+                if len(ridge_points) == 0:
+                    continue
+
+                # Compute radius as the distance from centroid to the nearest ridge
+                distances = np.linalg.norm(temp - center, axis = 1)
+                distance_to_ridge = np.linalg.norm(ridge_points - center, axis = 1)
+                min_distance_index = np.argmin(distance_to_ridge)
+                max_distance_index = np.argmax(distances)
+                closest_vertex = np.array(temp[min_distance_index])
+                farthest_vertex = np.array(temp[max_distance_index])
+
+                if np.any(closest_vertex < 0):
+                    continue
+
+                centers.append(center)
+                closest_points.append(closest_vertex)
+                farthest_points.append(farthest_vertex)
+                poly_coords.append(np.array([temp]))
+
+        #print(poly_coords)
+        #break
+
+        #3. fill ellipse with 1. else 0
+        colors = []     # Attention
+        mask_binary = np.zeros(shape = (samp_h, samp_w), dtype=np.uint8)
+        mask = np.zeros(shape = (samp_h, samp_w), dtype=np.uint8) # Attention
+        outline = np.zeros(shape = (samp_h, samp_w), dtype=np.uint8) # Attention
+        for center, closest_point, farthest_point in zip(centers, closest_points, farthest_points):
+            minor = int(np.linalg.norm(center - closest_point))
+            major = int(np.linalg.norm(center - farthest_point))
+            axes = (major, minor)
+            center = tuple(map(int, center))
+            angle = 0 # Can we use PCA to find orientation?
+            start_angle = 0
+            end_angle = 360
+
+            cv.ellipse(mask_binary, center, axes, angle, start_angle, end_angle, 1, thickness=-1)
+            
+            #B. different colors for each instance cell, mask and outline
+            color = tuple((np.random.random(size=3) * 256).tolist())
+            cv.ellipse(mask, center, axes, angle, start_angle, end_angle, color, thickness=-1)
+            cv.ellipse(outline, center, axes, angle, start_angle, end_angle, color, thickness=1)
+            colors.append(color)
+
+        #A. original image is masked such that only values inside cell remains unchanged, else 0
+        sample_pixels_masked = (sample_pixels*mask_binary).astype(np.uint8) # Attention
+        sample_pixels = (sample_pixels).astype(np.uint8) # Attention
+        
+        #4. Cropping
+        x_center_coords = []
+        y_center_coords = []
+        for coord in cone_center_coords:
+            x_center_coords.append(coord[0])
+            y_center_coords.append(coord[1])
+
+        crop_x, crop_y = crop_coord(x_center_coords=x_center_coords, y_center_coords=y_center_coords, delta=100)     
+    
+        for i in range(0, len(crop_y)-1):
+            for j in range(0, len(crop_x)-1):
+                x_1 = crop_x[j]
+                y_1 = crop_y[i]
+                
+                x_2 = crop_x[j+1]
+                y_2 = crop_y[i+1]
+                # mask, sample_pixel and sample_pixels_masked processed for specific crop region
+                mask_crop = mask[y_1 : y_2, x_1 : x_2]
+                sample_pixels_masked_crop = sample_pixels_masked[y_1 : y_2, x_1 : x_2]
+                sample_pixels_crop = sample_pixels[y_1 : y_2, x_1 : x_2]
+                
+                outline_crop = outline[min(y_center_coords):max(y_center_coords),min(x_center_coords):max(x_center_coords)]
+                
+                # Relative cone center coordinate for specific crop region
+                cone_center_coords_new = []
+                for coords in cone_center_coords:
+                    if (coords[0] > x_1) & (coords[0] < x_2) & (coords[1] > y_1) & (coords[1] < y_2):
+                        cone_center_coords_new.append([coords[1]-y_1, coords[0]-x_1])
+                coords_array = np.array(cone_center_coords_new)
+
+                seg = {'outlines' : np.array(outline_crop), 
+                       'colors' : np.array(colors), 
+                       'masks' : np.array(mask_crop)} 
+                seg = np.asarray(seg)
+
+                cv.imwrite(os.path.join(output_folder, aoslo_name, 'crop_masked', str(filename[:-5] + '_' + str(i) + '_' + str(j) + '.tif')), sample_pixels_masked_crop)
+                cv.imwrite(os.path.join(output_folder, aoslo_name, 'mask', str(filename[:-5] + '_' + str(i) + '_' + str(j) + '_masks.tif')), mask_crop)
+                cv.imwrite(os.path.join(output_folder, aoslo_name, 'crop', str(filename[:-5] + '_' + str(i) + '_' + str(j) + '.tif')), sample_pixels_crop)
+                
+                
+                np.save(os.path.join(output_folder, aoslo_name, 'seg', str(filename[:-5] + '_' + str(i) + '_' + str(j) + '_seg')), seg)
+                np.save(os.path.join(output_folder, aoslo_name, 'seg', str(filename[:-5] + '_' + str(i) + '_' + str(j) + '_coord')), coords_array)
+    
+       
+if __name__ == "__main__":
+    main()
+
