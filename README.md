@@ -27,6 +27,26 @@ thesis_src/
     │
     ├── multimodal_AOSLO_data/
     │         └── # Add your original multimodal AOSLO data here.
+    |
+    |
+    ├── preprocessing/ # Includes Classical Image Processing files (bandpass filter, watershed algo, blob detection, hough circle, ..)
+    |                  # Includes annotation processing to convert polygon to circle or ellipse
+    |                  #                     └──> # Using both center and boundary information from Confocal AOSLO data
+    |                  #                                └──> Closest vertex: annotation_seed_circle
+    |                  #                                └──> Closest ridge midpoint vertex: annotation_seed_ridge_circle
+    |                  #                     └──> # Using cone information from Confocal AOSLO data
+    |                  #                                └──> Voronoi method: # Note: We do not use this technique in our work as it is not accurate!
+    |                  #                                        └──> # We use center info. but later we extract the center and boundary from the Voronoi regions            
+    |                  #                                                  └──> voronoi_circle
+    |                  #                                                  └──> voronoi_ridge_circle
+    |                  #                                                  └──> voronoi_ridge_ellipse
+    |                  #                                        └──> # We use center info. and later we extract the  boundary from the Voronoi regions            
+    |                  #                                                  └──> voronoi_seed_circle
+    |                  #                                                  └──> voronoi_seed_ridge_circle
+    |                  #                                                  └──> voronoi_seed_ridge_ellipse
+    |                  #                     └──> verify_annotation.py # To do a visual inspection by overlaying extracted mask and original crop
+
+ 
 ```
 
 ## Follow the steps below to set up the necessary environments and check GPU configurations:
