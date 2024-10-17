@@ -48,7 +48,57 @@ thesis_src/
     |                  #                     └──> verify_annotation.py # To do a visual inspection by overlaying extracted mask and original crop
     |                  #  
     ├── utils/ # training notebook for stardist and evaluation notebook for cellpose 
-    |                  
+    |
+
+
+Note: You may need to update the file path as required!            
+```
+## In the plot_all.ipynb file, there are 2D plots. The parameters of the asymmetric power law can still be refined. Adjust as required!
+```
+# Initial parameters (p0)
+p0 = [
+    5.0,    # kappa: baseline density (log scale) - starting higher as it's peak density
+    0.0,    # k_s: random intercept - start at neutral
+    -0.5,   # pi_n: nasal slope - steeper initial decay
+    -0.3,   # pi_t: temporal slope - slightly less steep
+    0.0,    # p_s: participant effect - start at neutral
+    0.0,    # p_ns: nasal random effect - start at neutral
+    0.0,    # p_ts: temporal random effect - start at neutral
+    0.1,    # rho: offset - small positive value
+    0.0,    # r_s: random offset - start at neutral
+    0.0     # e_i: error term - start at neutral
+]
+
+# Bounds
+bounds = (
+    # Lower bounds
+    [
+        4.0,    # kappa: minimum reasonable log density
+        -0.2,   # k_s: small negative random adjustment
+        -2.0,   # pi_n: steeper negative slope possible for nasal
+        -1.5,   # pi_t: less steep negative slope for temporal
+        -0.2,   # p_s: small negative participant effect
+        -0.2,   # p_ns: small negative nasal random effect
+        -0.2,   # p_ts: small negative temporal random effect
+        0.05,   # rho: small positive offset (avoid zero)
+        -0.2,   # r_s: small negative random offset
+        -0.2    # e_i: small negative error term
+    ],
+    # Upper bounds
+    [
+        6.0,    # kappa: maximum reasonable log density
+        0.2,    # k_s: small positive random adjustment
+        -0.1,   # pi_n: shallow negative slope
+        -0.1,   # pi_t: shallow negative slope
+        0.2,    # p_s: small positive participant effect
+        0.2,    # p_ns: small positive nasal random effect
+        0.2,    # p_ts: small positive temporal random effect
+        0.5,    # rho: larger offset allowed
+        0.2,    # r_s: small positive random offset
+        0.2     # e_i: small positive error term
+    ]
+)
+
 ```
 
 ## Follow the steps below to set up the necessary environments and check GPU configurations:
@@ -97,4 +147,4 @@ $ python -c 'import torch; print(torch.rand(2,3).cuda())'
 ```
 
 
-Note: You may need to update the file path as required!
+
